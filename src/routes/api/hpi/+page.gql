@@ -1,0 +1,5 @@
+query HPI{
+    uk_data_house_price_index(limit: 1){
+        averageprice
+    }
+}
