@@ -10,7 +10,7 @@
       uk_data_house_price_index (
         where: {regionname: {_in: $countries}},
         order_by: {date: desc},
-        limit: 1
+        limit: 10
       ) {
        averageprice
 				detachedprice
