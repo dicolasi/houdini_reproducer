@@ -1,0 +1,3 @@
+query UkData($countries: [String!]!){
+    ...Hpi @with(countries: $countries)  @loading
+}

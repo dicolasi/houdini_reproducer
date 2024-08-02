@@ -1,40 +1,39 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { fragment, graphql, type Hpi } from '$houdini';
 
-	let hpiData: any = null;
-	let error: string | null = null;
-	let loading = true;
+	export let hpi: Hpi;
 
-	async function fetchHpiData() {
-		try {
-			loading = true;
-			const response = await fetch('/api/hpi');
-			if (!response.ok) throw new Error('Failed to fetch HPI data');
-			const data = await response.json();
-			hpiData = data.uk_data_house_price_index[0];
-		} catch (err) {
-			console.error('Error:', err);
-			error = err instanceof Error ? err.message : 'An unknown error occurred';
-		} finally {
-			loading = false;
-		}
-	}
+	$: hpiData = fragment(hpi, graphql(`
+    fragment Hpi on Query @arguments(countries: {type: "[String!]!"}) {
+      uk_data_house_price_index (
+        where: {regionname: {_in: $countries}},
+        order_by: {date: desc},
+        limit: 1
+      ) {
+        averageprice
+        detachedprice
+        date
+        regionname
+      }
+    }
+  `));
 
-	onMount(fetchHpiData);
-
-	function reload() {
-		fetchHpiData();
-	}
+	$: console.log('hpiData updated:', $hpiData);
 </script>
 
-{#if loading}
-	<p>Loading HPI data...</p>
-{:else if error}
-	<p>Error: {error}</p>
-{:else if hpiData}
-	<p>Average Price: £{hpiData.averageprice.toLocaleString()}</p>
+{#if $hpiData.fetching}
+	<p>Loading data...</p>
+{:else if $hpiData.error}
+	<p>Error: {$hpiData.error.message}</p>
+{:else if $hpiData.data?.uk_data_house_price_index && $hpiData.data.uk_data_house_price_index.length > 0}
+	<ul>
+		{#each $hpiData.data.uk_data_house_price_index as data}
+			<li>Region: {data.regionname}</li>
+			<li>Date: {data.date}</li>
+			<li>Average Price: {data.averageprice}</li>
+			<li>Detached Price: {data.detachedprice}</li>
+		{/each}
+	</ul>
 {:else}
-	<p>No HPI data available</p>
+	<p>No data available</p>
 {/if}
-
-<button on:click={reload}>Reload Data</button>
