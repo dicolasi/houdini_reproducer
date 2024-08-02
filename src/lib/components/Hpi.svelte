@@ -5,7 +5,7 @@
 
 	export let hpi: Hpi;
 
-	$: data = fragment(hpi, graphql(`
+	$: hpiData = fragment(hpi, graphql(`
     fragment Hpi on Query @arguments(countries: {type: "[String!]!"}) {
       uk_data_house_price_index (
         where: {regionname: {_in: $countries}},
@@ -31,6 +31,9 @@
       }
     }
   `));
+
+	$: h = $hpiData.uk_data_house_price_index;
+
 	const categories = [
 		{
 			id: 'property_type',
@@ -50,7 +53,7 @@
 		const colors = ['#1A56DB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#6366F1'];
 		const series = metrics.map((metric, index) => ({
 			name: getMetricDisplayName(metric),
-			data: data.map(d => d[metric]).reverse(),
+			data: h.map(d => d[metric]).reverse(),
 			color: colors[index % colors.length]
 		}));
 
@@ -58,7 +61,7 @@
 		if (series.length === 1) {
 			series.push({
 				name: 'Hidden',
-				data: Array(data.length).fill(null),
+				data: Array(h.length).fill(null),
 				color: 'transparent'
 			});
 		}
@@ -104,7 +107,7 @@
 			}
 		},
 		xaxis: {
-			categories: data.map(d => d.date).reverse(),
+			categories: h.map(d => d.date).reverse(),
 			labels: { show: true },
 			axisBorder: { show: true },
 			axisTicks: { show: true }
@@ -114,7 +117,7 @@
 				title: { text: 'Price (£)' },
 				labels: {
 					formatter: (value) => '£' + (value / 1000).toFixed(0) + 'k'
-				},
+				}
 			},
 			{
 				title: { text: 'Volume' },
@@ -122,7 +125,7 @@
 				show: selectedMetrics.some(m => m.includes('volume')),
 				labels: {
 					formatter: (value) => value.toLocaleString()
-				},
+				}
 			}
 		],
 		tooltip: {
@@ -166,7 +169,7 @@
 		series: getChartSeries(selectedMetrics)
 	};
 
-	$: latestData = data[0];
+	$: latestData = h[0];
 
 	function toggleMetric(metric) {
 		if (selectedMetrics.includes(metric)) {
@@ -182,9 +185,9 @@
 		// Here you would typically update the data based on the selected time range
 	}
 
-	$: averagePriceChange = ((latestData.averageprice - data[1].averageprice) / data[1].averageprice * 100).toFixed(1);
+	$: averagePriceChange = ((latestData.averageprice - h[1].averageprice) / h[1].averageprice * 100).toFixed(1);
 
-	$: options = {...options, series: getChartSeries(selectedMetrics)};
+	$: options = { ...options, series: getChartSeries(selectedMetrics) };
 </script>
 
 <Card class="w-full max-w-4xl mx-auto">
