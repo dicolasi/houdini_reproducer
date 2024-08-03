@@ -1,16 +1,18 @@
 <script lang="ts">
-	import { fragment, graphql, type Hpi } from '$houdini';
-	import { Chart, Card, Button, Dropdown, DropdownItem } from 'flowbite-svelte';
-	import { ChevronRightOutline, ChevronDownOutline } from 'flowbite-svelte-icons';
+	import { fragment, graphql, type Hpi, type Hpi$data } from '$houdini';
+	import { Chart, Card, Button, Dropdown, DropdownItem, Span } from 'flowbite-svelte';
+	import { ChevronRightOutline, ChevronDownOutline, ArrowUpOutline, ArrowDownOutline } from 'flowbite-svelte-icons';
 
 	export let hpi: Hpi;
+	export let country: string;
+
+	type HpiDataItem = Hpi$data['uk_data_house_price_index'][0];
 
 	$: hpiData = fragment(hpi, graphql(`
     fragment Hpi on Query @arguments(countries: {type: "[String!]!"}) {
       uk_data_house_price_index (
         where: {regionname: {_in: $countries}},
         order_by: {date: desc},
-        limit: 10
       ) {
        averageprice
 				detachedprice
@@ -28,13 +30,14 @@
 				oldprice
 				date
 				regionname
-      }
+				twelvemonthpercentchange
+       }
     }
   `));
 
-	$: h = $hpiData.uk_data_house_price_index;
+	$: stats = ($hpiData.uk_data_house_price_index || []).filter(d => d.regionname === country);
 
-	const categories = [
+	const categories: {id: string, name: string, metrics: (keyof HpiDataItem)[]}[] = [
 		{
 			id: 'property_type',
 			name: 'Property Type',
@@ -46,37 +49,35 @@
 		{ id: 'property_status', name: 'Property Status', metrics: ['newprice', 'oldprice'] }
 	];
 
-	let selectedMetrics = ['averageprice'];
-	let timeRange = 'Last 12 months';
+	let selectedMetrics: (keyof HpiDataItem)[] = ['averageprice'];
+	let timeRange: string = 'Last 12 months';
 
-	function getChartSeries(metrics) {
+	function getChartSeries(metrics: (keyof HpiDataItem)[]): {name: string, data: (number | null)[], color: string, showInLegend?: boolean}[] {
 		const colors = ['#1A56DB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#6366F1'];
 		const series = metrics.map((metric, index) => ({
 			name: getMetricDisplayName(metric),
-			data: h.map(d => d[metric]).reverse(),
+			data: stats.map(d => d[metric] as number | null).reverse(),
 			color: colors[index % colors.length]
 		}));
 
-		// Add hidden series only if there's a single visible series
 		if (series.length === 1) {
 			series.push({
 				name: 'Hidden',
-				data: Array(h.length).fill(null),
-				color: 'transparent'
+				data: Array(stats.length).fill(null),
+				color: 'transparent',
 			});
 		}
-
 		return series;
 	}
 
-	function getMetricDisplayName(metric) {
-		const specialCases = {
+	function getMetricDisplayName(metric: keyof HpiDataItem): string {
+		const specialCases: {[key in keyof HpiDataItem]?: string} = {
 			'ftbprice': 'First-time Buyers Price',
 			'fooprice': 'Former Owner-occupiers Price'
 		};
 
 		if (metric in specialCases) {
-			return specialCases[metric];
+			return specialCases[metric] || metric;
 		}
 
 		return metric.charAt(0).toUpperCase() + metric.slice(1).replace('price', ' Price').replace('volume', ' Volume');
@@ -107,7 +108,7 @@
 			}
 		},
 		xaxis: {
-			categories: h.map(d => d.date).reverse(),
+			categories: stats.map(d => d.date || '').reverse(),
 			labels: { show: true },
 			axisBorder: { show: true },
 			axisTicks: { show: true }
@@ -116,7 +117,7 @@
 			{
 				title: { text: 'Price (£)' },
 				labels: {
-					formatter: (value) => '£' + (value / 1000).toFixed(0) + 'k'
+					formatter: (value: number) => '£' + (value / 1000).toFixed(0) + 'k'
 				}
 			},
 			{
@@ -124,7 +125,7 @@
 				opposite: true,
 				show: selectedMetrics.some(m => m.includes('volume')),
 				labels: {
-					formatter: (value) => value.toLocaleString()
+					formatter: (value: number) => value.toLocaleString()
 				}
 			}
 		],
@@ -132,11 +133,12 @@
 			shared: true,
 			intersect: false,
 			y: {
-				formatter: (value, { seriesIndex, dataPointIndex, w }) => {
+				formatter: (value: number | null, { seriesIndex, dataPointIndex, w }: { seriesIndex: number, dataPointIndex: number, w: any }) => {
 					const metric = w.config.series[seriesIndex].name.toLowerCase().replace(' ', '');
 					if (metric === 'hidden') return '';
+					if (value === null) return 'N/A';
 					return metric.includes('volume') ?
-						(value === null ? 'N/A' : value.toLocaleString()) :
+						value.toLocaleString() :
 						`£${value.toLocaleString()}`;
 				}
 			}
@@ -147,12 +149,9 @@
 			onItemClick: {
 				toggleDataSeries: true
 			},
-			formatter: function(seriesName, opts) {
+			formatter: function(seriesName: string, opts: any) {
 				return seriesName !== 'Hidden' ? seriesName : '';
 			},
-			markers: {
-				fillColors: ['#1A56DB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#6366F1']
-			}
 		},
 		noData: {
 			text: 'No data to display',
@@ -169,38 +168,78 @@
 		series: getChartSeries(selectedMetrics)
 	};
 
-	$: latestData = h[0];
+	$: latestData = stats[0] || null;
 
-	function toggleMetric(metric) {
+	function toggleMetric(metric: keyof HpiDataItem): void {
 		if (selectedMetrics.includes(metric)) {
 			selectedMetrics = selectedMetrics.filter(m => m !== metric);
 		} else {
 			selectedMetrics = [...selectedMetrics, metric];
 		}
+		if (selectedMetrics.length === 0) {
+			selectedMetrics = ['averageprice'];
+		}
 		selectedMetrics = [...selectedMetrics]; // Trigger reactivity
 	}
 
-	function updateTimeRange(range) {
+	function updateTimeRange(range: string): void {
 		timeRange = range;
-		// Here you would typically update the data based on the selected time range
+		const now = new Date();
+		let startDate: Date;
+		switch (range) {
+			case '6 months':
+				startDate = new Date(now.setMonth(now.getMonth() - 6));
+				break;
+			case '1 year':
+				startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+				break;
+			case '3 years':
+				startDate = new Date(now.setFullYear(now.getFullYear() - 3));
+				break;
+			case '5 years':
+				startDate = new Date(now.setFullYear(now.getFullYear() - 5));
+				break;
+			case '10 years':
+				startDate = new Date(now.setFullYear(now.getFullYear() - 10));
+				break;
+			default:
+				startDate = new Date(1969, 0, 1); // Show all data
+		}
+		stats = ($hpiData.uk_data_house_price_index || []).filter(d => d.regionname === country && (d.date ? new Date(d.date) >= startDate : false));
 	}
 
-	$: averagePriceChange = ((latestData.averageprice - h[1].averageprice) / h[1].averageprice * 100).toFixed(1);
+	$: calculatePriceChange = (): string => {
+		if (!latestData || latestData.twelvemonthpercentchange == null) return 'N/A';
+		return `${latestData.twelvemonthpercentchange.toFixed(1)}%`;
+	}
 
-	$: options = { ...options, series: getChartSeries(selectedMetrics) };
+	$: priceChange = calculatePriceChange();
+	$: isPriceChangePositive = priceChange !== 'N/A' && !priceChange.startsWith('-');
+
 </script>
 
 <Card class="w-full max-w-4xl mx-auto">
 	<div class="flex justify-between mb-4">
 		<div>
 			<h5 class="leading-none text-3xl font-bold text-gray-900 dark:text-white pb-2">
-				£{latestData.averageprice.toLocaleString()}</h5>
-			<p class="text-base font-normal text-gray-500 dark:text-gray-400">Average price in England</p>
+				{#if latestData?.averageprice != null}
+					£{latestData.averageprice.toLocaleString()}
+				{:else}
+					N/A
+				{/if}
+			</h5>
+			<p class="text-base font-normal text-gray-500 dark:text-gray-400">Average price in {country}</p>
 		</div>
-		<div
-			class="flex items-center px-2.5 py-0.5 text-base font-semibold text-{averagePriceChange >= 0 ? 'green' : 'red'}-500 dark:text-{averagePriceChange >= 0 ? 'green' : 'red'}-500 text-center">
-			{averagePriceChange}%
-			<ChevronRightOutline class="w-6 h-6 ms-1" />
+		<div class="flex flex-col items-end">
+			<div class="flex items-center px-2.5 py-0.5 text-2xl font-semibold text-{isPriceChangePositive ? 'green' : 'red'}-500 dark:text-{isPriceChangePositive ? 'green' : 'red'}-500 text-center">
+				{#if isPriceChangePositive}
+					<ArrowUpOutline class="w-6 h-6 mr-1" />
+				{:else}
+					<ArrowDownOutline class="w-6 h-6 mr-1" />
+				{/if}
+				<Span>{priceChange}</Span>
+			</div>
+			<p class="text-sm font-normal text-gray-500 dark:text-gray-400">Year on Year change</p>
 		</div>
 	</div>
 
@@ -232,10 +271,12 @@
 			<ChevronDownOutline class="w-2.5 m-2.5 ms-1.5" />
 		</Button>
 		<Dropdown class="w-40" offset="-6">
-			<DropdownItem on:click={() => updateTimeRange('Last 7 days')}>Last 7 days</DropdownItem>
-			<DropdownItem on:click={() => updateTimeRange('Last 30 days')}>Last 30 days</DropdownItem>
-			<DropdownItem on:click={() => updateTimeRange('Last 90 days')}>Last 90 days</DropdownItem>
-			<DropdownItem on:click={() => updateTimeRange('Last 12 months')}>Last 12 months</DropdownItem>
+			<DropdownItem on:click={() => updateTimeRange('6 months')}>6 months</DropdownItem>
+			<DropdownItem on:click={() => updateTimeRange('1 year')}>1 year</DropdownItem>
+			<DropdownItem on:click={() => updateTimeRange('3 years')}>3 years</DropdownItem>
+			<DropdownItem on:click={() => updateTimeRange('5 years')}>5 years</DropdownItem>
+			<DropdownItem on:click={() => updateTimeRange('10 years')}>10 years</DropdownItem>
+			<DropdownItem on:click={() => updateTimeRange('All time')}>All time</DropdownItem>
 		</Dropdown>
 	</div>
 </Card>

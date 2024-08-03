@@ -10,7 +10,6 @@ export function _houdini_onError(error: any) {
 }
 
 export const _UkDataVariables: UkDataVariables = () => {
-	console.log('Called _UkDataVariables');
 	return {
 		countries: ["England", "Wales", "Scotland"]
 	}

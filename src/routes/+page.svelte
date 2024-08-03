@@ -6,4 +6,4 @@
 	$: ({ UkData } = data);
 </script>
 
-<Hpi hpi={$UkData.data} />
+<Hpi hpi={$UkData.data} country="England"/>

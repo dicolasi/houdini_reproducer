@@ -15,6 +15,7 @@ type HousePriceIndex {
   salesvolume: Int
   semidetachedprice: Float
   terracedprice: Float
+  twelvemonthpercentchange: Float
 }
 
 enum OrderBy {

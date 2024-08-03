@@ -420,6 +420,7 @@ const yogaApp = createYoga<RequestEvent>({
             oldprice: Float
             date: String
             regionname: String
+            twelvemonthpercentchange: Float
         }
 
         input WhereInput {
@@ -442,7 +443,6 @@ const yogaApp = createYoga<RequestEvent>({
 		resolvers: {
 			Query: {
 				uk_data_house_price_index: (_, { where, order_by, limit }) => {
-					console.log('Resolver called with arguments:', { where, order_by, limit });
 					let filteredData = data;
 
 					if (where?.regionname?._in) {
@@ -458,12 +458,9 @@ const yogaApp = createYoga<RequestEvent>({
 							}
 						});
 					}
-
 					if (limit) {
 						filteredData = filteredData.slice(0, limit);
 					}
-
-					console.log('Filtered data:', filteredData);
 					return filteredData;
 				}
 			}
