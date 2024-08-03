@@ -1,12 +1,18 @@
 <script lang="ts">
 	import { fragment, graphql, type Hpi, type Hpi$data } from '$houdini';
-	import { Chart, Card, Button, Dropdown, DropdownItem, Span } from 'flowbite-svelte';
-	import { ChevronRightOutline, ChevronDownOutline, ArrowUpOutline, ArrowDownOutline } from 'flowbite-svelte-icons';
+	import { Chart, Card, Button, Dropdown, DropdownItem, Span, Tooltip } from 'flowbite-svelte';
+	import {
+		ChevronDownOutline,
+		ArrowUpOutline,
+		ArrowDownOutline,
+		InfoCircleSolid
+	} from 'flowbite-svelte-icons';
 
 	export let hpi: Hpi;
 	export let country: string;
 
 	type HpiDataItem = Hpi$data['uk_data_house_price_index'][0];
+
 
 	$: hpiData = fragment(hpi, graphql(`
     fragment Hpi on Query @arguments(countries: {type: "[String!]!"}) {
@@ -37,7 +43,7 @@
 
 	$: stats = ($hpiData.uk_data_house_price_index || []).filter(d => d.regionname === country);
 
-	const categories: {id: string, name: string, metrics: (keyof HpiDataItem)[]}[] = [
+	const categories: { id: string, name: string, metrics: (keyof HpiDataItem)[] }[] = [
 		{
 			id: 'property_type',
 			name: 'Property Type',
@@ -52,7 +58,12 @@
 	let selectedMetrics: (keyof HpiDataItem)[] = ['averageprice'];
 	let timeRange: string = 'Last 12 months';
 
-	function getChartSeries(metrics: (keyof HpiDataItem)[]): {name: string, data: (number | null)[], color: string, showInLegend?: boolean}[] {
+	function getChartSeries(metrics: (keyof HpiDataItem)[]): {
+		name: string,
+		data: (number | null)[],
+		color: string,
+		showInLegend?: boolean
+	}[] {
 		const colors = ['#1A56DB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#6366F1'];
 		const series = metrics.map((metric, index) => ({
 			name: getMetricDisplayName(metric),
@@ -65,13 +76,14 @@
 				name: 'Hidden',
 				data: Array(stats.length).fill(null),
 				color: 'transparent',
+				showInLegend: false
 			});
 		}
 		return series;
 	}
 
 	function getMetricDisplayName(metric: keyof HpiDataItem): string {
-		const specialCases: {[key in keyof HpiDataItem]?: string} = {
+		const specialCases: { [key in keyof HpiDataItem]?: string } = {
 			'ftbprice': 'First-time Buyers Price',
 			'fooprice': 'Former Owner-occupiers Price'
 		};
@@ -133,7 +145,11 @@
 			shared: true,
 			intersect: false,
 			y: {
-				formatter: (value: number | null, { seriesIndex, dataPointIndex, w }: { seriesIndex: number, dataPointIndex: number, w: any }) => {
+				formatter: (value: number | null, { seriesIndex, dataPointIndex, w }: {
+					seriesIndex: number,
+					dataPointIndex: number,
+					w: any
+				}) => {
 					const metric = w.config.series[seriesIndex].name.toLowerCase().replace(' ', '');
 					if (metric === 'hidden') return '';
 					if (value === null) return 'N/A';
@@ -151,7 +167,7 @@
 			},
 			formatter: function(seriesName: string, opts: any) {
 				return seriesName !== 'Hidden' ? seriesName : '';
-			},
+			}
 		},
 		noData: {
 			text: 'No data to display',
@@ -211,16 +227,16 @@
 	$: calculatePriceChange = (): string => {
 		if (!latestData || latestData.twelvemonthpercentchange == null) return 'N/A';
 		return `${latestData.twelvemonthpercentchange.toFixed(1)}%`;
-	}
+	};
 
 	$: priceChange = calculatePriceChange();
 	$: isPriceChangePositive = priceChange !== 'N/A' && !priceChange.startsWith('-');
-
+	$: latestDataDate = latestData?.date ? new Date(latestData.date).toLocaleDateString() : 'N/A';
 </script>
 
 <Card class="w-full max-w-4xl mx-auto">
 	<div class="flex justify-between mb-4">
-		<div>
+		<div class="relative">
 			<h5 class="leading-none text-3xl font-bold text-gray-900 dark:text-white pb-2">
 				{#if latestData?.averageprice != null}
 					£{latestData.averageprice.toLocaleString()}
@@ -228,10 +244,17 @@
 					N/A
 				{/if}
 			</h5>
-			<p class="text-base font-normal text-gray-500 dark:text-gray-400">Average price in {country}</p>
+			<p class="text-base font-normal text-gray-500 dark:text-gray-400">
+				Average price in {country}
+				<span class="inline-block align-middle">
+					<InfoCircleSolid class="w-4 h-4 text-gray-400 hover:text-gray-500 cursor-pointer" />
+				  <Tooltip placement="bottom-start">This value is for the latest data point ({latestDataDate}) in the selected time range.</Tooltip>
+				</span>
+			</p>
 		</div>
 		<div class="flex flex-col items-end">
-			<div class="flex items-center px-2.5 py-0.5 text-2xl font-semibold text-{isPriceChangePositive ? 'green' : 'red'}-500 dark:text-{isPriceChangePositive ? 'green' : 'red'}-500 text-center">
+			<div
+				class="flex items-center px-2.5 py-0.5 text-2xl font-semibold text-{isPriceChangePositive ? 'green' : 'red'}-500 dark:text-{isPriceChangePositive ? 'green' : 'red'}-500 text-center">
 				{#if isPriceChangePositive}
 					<ArrowUpOutline class="w-6 h-6 mr-1" />
 				{:else}
@@ -239,7 +262,13 @@
 				{/if}
 				<Span>{priceChange}</Span>
 			</div>
-			<p class="text-sm font-normal text-gray-500 dark:text-gray-400">Year on Year change</p>
+			<p class="text-sm font-normal text-gray-500 dark:text-gray-400">
+				Year on Year change
+				<span class="inline-block align-middle">
+					<InfoCircleSolid class="w-4 h-4 text-gray-400 hover:text-gray-500 cursor-pointer" />
+					<Tooltip placement="bottom-start">This change is calculated for the latest data point ({latestDataDate}) in the selected time range.</Tooltip>
+				</span>
+			</p>
 		</div>
 	</div>
 
