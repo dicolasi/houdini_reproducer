@@ -13,13 +13,21 @@
 
 	type HpiDataItem = Hpi$data['uk_data_house_price_index'][0];
 
+	enum TimeRange {
+		OneYear = '1 year',
+		ThreeYears = '3 years',
+		FiveYears = '5 years',
+		TenYears = '10 years',
+		AllTime = 'All time'
+	}
+
 	$: hpiData = fragment(hpi, graphql(`
-    fragment Hpi on query_root @arguments(countries: {type: "[String!]!"}) {
-      uk_data_house_price_index (
-        where: {regionname: {_in: $countries}},
-        order_by: {date: desc},
-      ) {
-       averageprice
+		fragment Hpi on query_root @arguments(countries: {type: "[String!]!"}) {
+			uk_data_house_price_index (
+				where: {regionname: {_in: $countries}},
+				order_by: {date: desc},
+			) {
+				averageprice
 				detachedprice
 				semidetachedprice
 				terracedprice
@@ -36,13 +44,17 @@
 				date
 				regionname
 				twelvemonthpercentchange
-       }
-    }
-  `));
+			}
+		}
+	`));
+
+	function sortByDateDescending(a: HpiDataItem, b: HpiDataItem): number {
+		return new Date(b.date).getTime() - new Date(a.date).getTime();
+	}
 
 	$: allData = ($hpiData.uk_data_house_price_index || [])
 		.filter(d => d.regionname === country)
-		.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+		.sort(sortByDateDescending);
 
 	$: latestDataDate = allData[0]?.date ? new Date(allData[0].date) : new Date();
 
@@ -61,32 +73,28 @@
 	];
 
 	let selectedMetrics: (keyof HpiDataItem)[] = ['averageprice'];
-	let timeRange: string = '1 year';
+	let timeRange: TimeRange = TimeRange.OneYear;
 	let activeTab = categories[0].id;
 
-	function filterDataByTimeRange(data: HpiDataItem[], range: string): HpiDataItem[] {
+	function filterDataByTimeRange(data: HpiDataItem[], range: TimeRange): HpiDataItem[] {
 		const endDate = latestDataDate;
-		let startDate: Date;
+		let startDate = new Date(endDate);
 
 		switch (range) {
-			case '1 year':
-				startDate = new Date(endDate);
+			case TimeRange.OneYear:
 				startDate.setFullYear(startDate.getFullYear() - 1);
 				break;
-			case '3 years':
-				startDate = new Date(endDate);
+			case TimeRange.ThreeYears:
 				startDate.setFullYear(startDate.getFullYear() - 3);
 				break;
-			case '5 years':
-				startDate = new Date(endDate);
+			case TimeRange.FiveYears:
 				startDate.setFullYear(startDate.getFullYear() - 5);
 				break;
-			case '10 years':
-				startDate = new Date(endDate);
+			case TimeRange.TenYears:
 				startDate.setFullYear(startDate.getFullYear() - 10);
 				break;
-			default:
-				startDate = new Date(0); // Show all data
+			case TimeRange.AllTime:
+				return data;
 		}
 
 		return data.filter(d => new Date(d.date) >= startDate && new Date(d.date) <= endDate);
@@ -134,35 +142,26 @@
 			height: 400,
 			type: 'line',
 			fontFamily: 'Inter, sans-serif',
-			toolbar: {
-				show: true
-			}
+			toolbar: { show: true }
 		},
 		colors: ['#1A56DB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#6366F1'],
 		dataLabels: { enabled: false },
-		stroke: {
-			width: 6,
-			curve: 'smooth'
-		},
+		stroke: { width: 6, curve: 'smooth' },
 		grid: {
 			show: true,
 			strokeDashArray: 4,
-			padding: {
-				left: 2,
-				right: 2,
-				top: 0
-			}
+			padding: { left: 2, right: 2, top: 0 }
 		},
 		xaxis: {
 			type: 'datetime',
 			categories: stats.map(d => new Date(d.date).getTime()),
 			labels: {
-				formatter: function(value: string, timestamp: number) {
-					return new Date(timestamp).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
-				}
+				formatter: (value: string, timestamp: number) =>
+					new Date(timestamp).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
 			},
 			axisBorder: { show: true },
-			axisTicks: { show: true }
+			axisTicks: { show: true },
+			reversed: true
 		},
 		yaxis: [
 			{
@@ -184,34 +183,23 @@
 			shared: true,
 			intersect: false,
 			x: {
-				formatter: function(val: number) {
-					return new Date(val).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-				}
+				formatter: (val: number) =>
+					new Date(val).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 			},
 			y: {
-				formatter: (value: number | null, { seriesIndex, dataPointIndex, w }: {
-					seriesIndex: number,
-					dataPointIndex: number,
-					w: any
-				}) => {
+				formatter: (value: number | null, { seriesIndex, w }: { seriesIndex: number, w: any }) => {
 					const metric = w.config.series[seriesIndex].name.toLowerCase().replace(' ', '');
 					if (metric === 'hidden') return '';
 					if (value === null) return 'N/A';
-					return metric.includes('volume') ?
-						value.toLocaleString() :
-						`£${value.toLocaleString()}`;
+					return metric.includes('volume') ? value.toLocaleString() : `£${value.toLocaleString()}`;
 				}
 			}
 		},
 		legend: {
 			show: true,
 			position: 'bottom',
-			onItemClick: {
-				toggleDataSeries: true
-			},
-			formatter: function(seriesName: string, opts: any) {
-				return seriesName !== 'Hidden' ? seriesName : '';
-			}
+			onItemClick: { toggleDataSeries: true },
+			formatter: (seriesName: string) => seriesName !== 'Hidden' ? seriesName : ''
 		},
 		noData: {
 			text: 'No data to display',
@@ -242,19 +230,21 @@
 		selectedMetrics = [...selectedMetrics]; // Trigger reactivity
 	}
 
-	function updateTimeRange(range: string): void {
+	function updateTimeRange(range: TimeRange): void {
 		timeRange = range;
 		stats = filterDataByTimeRange(allData, range);
 	}
 
-	$: calculatePriceChange = (): string => {
-		if (!latestData || latestData.twelvemonthpercentchange == null) return 'N/A';
-		return `${latestData.twelvemonthpercentchange.toFixed(1)}%`;
-	};
+	function calculatePriceChange(data: HpiDataItem | null): string {
+		if (!data || data.twelvemonthpercentchange == null) return 'N/A';
+		return `${data.twelvemonthpercentchange.toFixed(1)}%`;
+	}
 
-	$: priceChange = calculatePriceChange();
+	$: priceChange = calculatePriceChange(latestData);
 	$: isPriceChangePositive = priceChange !== 'N/A' && !priceChange.startsWith('-');
-	$: latestDataDateFormatted = latestData?.date ? new Date(latestData.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A';
+	$: latestDataDateFormatted = latestData?.date
+		? new Date(latestData.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+		: 'N/A';
 </script>
 
 <Card class="w-full max-w-4xl mx-auto">
@@ -326,11 +316,11 @@
 			<ChevronDownOutline class="w-2.5 m-2.5 ms-1.5" />
 		</Button>
 		<Dropdown class="w-40" offset="-6">
-			<DropdownItem on:click={() => updateTimeRange('1 year')}>1 year</DropdownItem>
-			<DropdownItem on:click={() => updateTimeRange('3 years')}>3 years</DropdownItem>
-			<DropdownItem on:click={() => updateTimeRange('5 years')}>5 years</DropdownItem>
-			<DropdownItem on:click={() => updateTimeRange('10 years')}>10 years</DropdownItem>
-			<DropdownItem on:click={() => updateTimeRange('All time')}>All time</DropdownItem>
+			<DropdownItem on:click={() => updateTimeRange(TimeRange.OneYear)}>1 year</DropdownItem>
+			<DropdownItem on:click={() => updateTimeRange(TimeRange.ThreeYears)}>3 years</DropdownItem>
+			<DropdownItem on:click={() => updateTimeRange(TimeRange.FiveYears)}>5 years</DropdownItem>
+			<DropdownItem on:click={() => updateTimeRange(TimeRange.TenYears)}>10 years</DropdownItem>
+			<DropdownItem on:click={() => updateTimeRange(TimeRange.AllTime)}>All time</DropdownItem>
 		</Dropdown>
 	</div>
 </Card>
