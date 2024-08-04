@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { fragment, graphql, type Hpi, type Hpi$data } from '$houdini';
-	import { Chart, Card, Button, Dropdown, DropdownItem, Span, Tooltip } from 'flowbite-svelte';
+	import { Chart, Card, Button, Dropdown, DropdownItem, Span, Tooltip, Tabs, TabItem } from 'flowbite-svelte';
 	import {
 		ChevronDownOutline,
 		ArrowUpOutline,
@@ -13,9 +13,8 @@
 
 	type HpiDataItem = Hpi$data['uk_data_house_price_index'][0];
 
-
 	$: hpiData = fragment(hpi, graphql(`
-    fragment Hpi on Query @arguments(countries: {type: "[String!]!"}) {
+    fragment Hpi on query_root @arguments(countries: {type: "[String!]!"}) {
       uk_data_house_price_index (
         where: {regionname: {_in: $countries}},
         order_by: {date: desc},
@@ -41,7 +40,13 @@
     }
   `));
 
-	$: stats = ($hpiData.uk_data_house_price_index || []).filter(d => d.regionname === country);
+	$: allData = ($hpiData.uk_data_house_price_index || [])
+		.filter(d => d.regionname === country)
+		.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+	$: latestDataDate = allData[0]?.date ? new Date(allData[0].date) : new Date();
+
+	$: stats = filterDataByTimeRange(allData, timeRange);
 
 	const categories: { id: string, name: string, metrics: (keyof HpiDataItem)[] }[] = [
 		{
@@ -56,7 +61,36 @@
 	];
 
 	let selectedMetrics: (keyof HpiDataItem)[] = ['averageprice'];
-	let timeRange: string = 'Last 12 months';
+	let timeRange: string = '1 year';
+	let activeTab = categories[0].id;
+
+	function filterDataByTimeRange(data: HpiDataItem[], range: string): HpiDataItem[] {
+		const endDate = latestDataDate;
+		let startDate: Date;
+
+		switch (range) {
+			case '1 year':
+				startDate = new Date(endDate);
+				startDate.setFullYear(startDate.getFullYear() - 1);
+				break;
+			case '3 years':
+				startDate = new Date(endDate);
+				startDate.setFullYear(startDate.getFullYear() - 3);
+				break;
+			case '5 years':
+				startDate = new Date(endDate);
+				startDate.setFullYear(startDate.getFullYear() - 5);
+				break;
+			case '10 years':
+				startDate = new Date(endDate);
+				startDate.setFullYear(startDate.getFullYear() - 10);
+				break;
+			default:
+				startDate = new Date(0); // Show all data
+		}
+
+		return data.filter(d => new Date(d.date) >= startDate && new Date(d.date) <= endDate);
+	}
 
 	function getChartSeries(metrics: (keyof HpiDataItem)[]): {
 		name: string,
@@ -67,7 +101,7 @@
 		const colors = ['#1A56DB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#6366F1'];
 		const series = metrics.map((metric, index) => ({
 			name: getMetricDisplayName(metric),
-			data: stats.map(d => d[metric] as number | null).reverse(),
+			data: stats.map(d => d[metric] as number | null),
 			color: colors[index % colors.length]
 		}));
 
@@ -120,8 +154,13 @@
 			}
 		},
 		xaxis: {
-			categories: stats.map(d => d.date || '').reverse(),
-			labels: { show: true },
+			type: 'datetime',
+			categories: stats.map(d => new Date(d.date).getTime()),
+			labels: {
+				formatter: function(value: string, timestamp: number) {
+					return new Date(timestamp).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+				}
+			},
 			axisBorder: { show: true },
 			axisTicks: { show: true }
 		},
@@ -144,6 +183,11 @@
 		tooltip: {
 			shared: true,
 			intersect: false,
+			x: {
+				formatter: function(val: number) {
+					return new Date(val).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+				}
+			},
 			y: {
 				formatter: (value: number | null, { seriesIndex, dataPointIndex, w }: {
 					seriesIndex: number,
@@ -200,28 +244,7 @@
 
 	function updateTimeRange(range: string): void {
 		timeRange = range;
-		const now = new Date();
-		let startDate: Date;
-		switch (range) {
-			case '6 months':
-				startDate = new Date(now.setMonth(now.getMonth() - 6));
-				break;
-			case '1 year':
-				startDate = new Date(now.setFullYear(now.getFullYear() - 1));
-				break;
-			case '3 years':
-				startDate = new Date(now.setFullYear(now.getFullYear() - 3));
-				break;
-			case '5 years':
-				startDate = new Date(now.setFullYear(now.getFullYear() - 5));
-				break;
-			case '10 years':
-				startDate = new Date(now.setFullYear(now.getFullYear() - 10));
-				break;
-			default:
-				startDate = new Date(1969, 0, 1); // Show all data
-		}
-		stats = ($hpiData.uk_data_house_price_index || []).filter(d => d.regionname === country && (d.date ? new Date(d.date) >= startDate : false));
+		stats = filterDataByTimeRange(allData, range);
 	}
 
 	$: calculatePriceChange = (): string => {
@@ -231,7 +254,7 @@
 
 	$: priceChange = calculatePriceChange();
 	$: isPriceChangePositive = priceChange !== 'N/A' && !priceChange.startsWith('-');
-	$: latestDataDate = latestData?.date ? new Date(latestData.date).toLocaleDateString() : 'N/A';
+	$: latestDataDateFormatted = latestData?.date ? new Date(latestData.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A';
 </script>
 
 <Card class="w-full max-w-4xl mx-auto">
@@ -248,7 +271,7 @@
 				Average price in {country}
 				<span class="inline-block align-middle">
 					<InfoCircleSolid class="w-4 h-4 text-gray-400 hover:text-gray-500 cursor-pointer" />
-				  <Tooltip placement="bottom-start">This value is for the latest data point ({latestDataDate}) in the selected time range.</Tooltip>
+				  <Tooltip placement="bottom-start">This value is for the latest data point ({latestDataDateFormatted}) in the selected time range.</Tooltip>
 				</span>
 			</p>
 		</div>
@@ -266,29 +289,32 @@
 				Year on Year change
 				<span class="inline-block align-middle">
 					<InfoCircleSolid class="w-4 h-4 text-gray-400 hover:text-gray-500 cursor-pointer" />
-					<Tooltip placement="bottom-start">This change is calculated for the latest data point ({latestDataDate}) in the selected time range.</Tooltip>
+					<Tooltip placement="bottom-start">This change is calculated for the latest data point ({latestDataDateFormatted}) in the selected time range.</Tooltip>
 				</span>
 			</p>
 		</div>
 	</div>
 
 	<div class="mb-4">
-		{#each categories as category}
-			<div class="mb-2">
-				<h3 class="font-semibold mb-1">{category.name}</h3>
-				<div class="flex flex-wrap gap-2">
-					{#each category.metrics as metric}
-						<Button
-							color={selectedMetrics.includes(metric) ? 'blue' : 'light'}
-							size="xs"
-							on:click={() => toggleMetric(metric)}
-						>
-							{getMetricDisplayName(metric)}
-						</Button>
-					{/each}
-				</div>
-			</div>
-		{/each}
+		<Tabs style="underline" class="overflow-x-auto">
+			{#each categories as category}
+				<TabItem open={activeTab === category.id} on:click={() => activeTab = category.id}>
+					<span slot="title">{category.name}</span>
+					<div class="flex flex-wrap gap-2 mt-2">
+						{#each category.metrics as metric}
+							<Button
+								color={selectedMetrics.includes(metric) ? 'blue' : 'light'}
+								size="xs"
+								class="transition-colors duration-200 ease-in-out hover:bg-blue-100"
+								on:click={() => toggleMetric(metric)}
+							>
+								{getMetricDisplayName(metric)}
+							</Button>
+						{/each}
+					</div>
+				</TabItem>
+			{/each}
+		</Tabs>
 	</div>
 
 	<Chart {options} />
@@ -300,7 +326,6 @@
 			<ChevronDownOutline class="w-2.5 m-2.5 ms-1.5" />
 		</Button>
 		<Dropdown class="w-40" offset="-6">
-			<DropdownItem on:click={() => updateTimeRange('6 months')}>6 months</DropdownItem>
 			<DropdownItem on:click={() => updateTimeRange('1 year')}>1 year</DropdownItem>
 			<DropdownItem on:click={() => updateTimeRange('3 years')}>3 years</DropdownItem>
 			<DropdownItem on:click={() => updateTimeRange('5 years')}>5 years</DropdownItem>
