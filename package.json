@@ -17,7 +17,7 @@
     "devDependencies": {
         "@playwright/test": "^1.28.1",
         "@sveltejs/adapter-auto": "^3.0.0",
-        "@sveltejs/kit": "^2.0.0",
+        "@sveltejs/kit": "^2.8.3",
         "@sveltejs/vite-plugin-svelte": "^3.0.0",
         "@types/eslint": "^9.6.0",
         "eslint": "^9.0.0",
@@ -33,7 +33,7 @@
         "vite": "^5.0.3",
         "vitest": "^2.0.0",
         "houdini": "^1.2.51",
-        "houdini-svelte": "^1.2.51"
+        "houdini-svelte": "^2.0.1"
     },
     "type": "module"
 }
